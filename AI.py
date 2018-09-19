@@ -116,13 +116,15 @@ def tsp(graph):
     """ Computes the objective function (heuristic) for the
         Traveling Salesman Problem.
     """
-    return lambda path: sum(graph.edgeWeight(path[i], path[i+1]) for i in range(len(path) - 1))
+    factor = [1]*graph.dimension()
+    return graph.objective(factor)
 
 def mlt(graph):
     """ Computes the objective function (heuristic) for the
         Minimum Latency Problem.
     """
-    return lambda path: sum(graph.edgeWeight(path[i], path[i+1]) * (len(path) - 1 - i) for i in range(len(path) - 1))
+    factor = [x for x in reversed(range(1, graph.dimension() + 1))]
+    return graph.objective(factor)
 
 def next(graph, path, objective=None, maximize=False):
     """ Computes the next greedy choice of vertex for a complete graph
@@ -190,23 +192,64 @@ https://stackoverflow.com/questions/5595425/what-is-the-best-way-to-compare-floa
     """
     return abs(a-b) <= max(rel_tol * max(abs(a), abs(b)), abs_tol)
 
+def diff(a, b):
+    """ returns the keys of different elements between a and b of the same size"""
+    return [i for i in range(len(a)) if not a[i] == b[i]]
+
+def swap(circuit, i, j):
+    circuit[i], circuit[j] = circuit[j], circuit[i]
+    return circuit
+
 fst = lambda pair: pair[0]
 
-def hillClimb(circuit, graph, constructor=swapSpace, objective=None, maximize=False):
-    """ Generates a hamiltonian circuit by best fit Hill Climbing upon
-        a previous solution. By default it uses the tsp heuristic
-        and seeks to minimize it.
+def mltResize(graph, solution, size, i, j):
+    """ recalculates the value of the solution with the mlt heuristic after
+        its i vertex has been swapped by its j vertex.
     """
-    if objective == None:
-        objective = tsp(graph)
-    space = [(objective(solution), solution) for solution in constructor(circuit)]
-    space = sorted(space, key=fst, reverse=maximize)
-    result = space[0]
+    n = graph.dimension()
+    preI = graph.edgeWeight(solution[i-1], solution[i]) if i > 0 else 0.0
+    posI = graph.edgeWeight(solution[i], solution[i+1]) if not j == i + 1 else 0.0
+    preJ = graph.edgeWeight(solution[j-1], solution[j]) if not j == i + 1 else 0.0
+    posJ = graph.edgeWeight(solution[j], solution[j+1]) if j < n else 0.0
+    subtract = (n-i+1)*preI + (n-i)*posI + (n-j+1)*preJ + (n-j)*posJ
+
+    solution = swap(solution, i, j)
+
+    preI = graph.edgeWeight(solution[i-1], solution[i]) if i > 0 else 0.0
+    posI = graph.edgeWeight(solution[i], solution[i+1]) if not j == i + 1 else 0.0
+    preJ = graph.edgeWeight(solution[j-1], solution[j]) if not j == i + 1 else 0.0
+    posJ = graph.edgeWeight(solution[j], solution[j+1]) if j < n else 0.0
+    add = (n-i+1)*preI + (n-i)*posI + (n-j+1)*preJ + (n-j)*posJ
+
+    size += add - subtract
+
+    return (size, solution)
+
+def mltHillClimb(circuit, graph, maximize=False):
+    """ Generates a hamiltonian circuit for the mlt problem by best fit Hill Climbing upon
+        a previous solution. This algorithm uses the swap neighbourhood.
+        Originally we made a very generic function that allowed for the 
+        specification of an objective function and neighborhood constructor function. However
+        we decided doing a function for each particular case would allow greater optmization.
+        The maximize flag can still be specified if one wants to find the worst solution.
+    """
+    objective = mlt(graph)
     value = objective(circuit)
-    cond = value > result[0] if maximize else value < result[0]
-    if isclose(value, result[0]) or cond:
-        return circuit
-    return hillClimb(result[1], graph, constructor, objective, maximize)
+    space = sorted(((objective(solution), solution) for solution in swapSpace(circuit)), key=fst, reverse=maximize)
+    result = space[0]
+    keys = diff(circuit, result[1])
+    cond = isclose(value, result[0]) or (value > result[0] if maximize else value < result[0])
+    while not cond:
+        circuit = result[1]
+        value = result[0]
+        space = sorted( (mltResize(graph, solution, size, keys[0], keys[1])
+        for size,solution in space[1::]),
+        key=fst, reverse=maximize)
+        result = space[0]
+        keys = diff(circuit, result[1])
+        cond = isclose(value, result[0]) or (value > result[0] if maximize else value < result[0])
+
+    return circuit
 
 def main(n):
     weights = [[i+j for j in range(n)] for i in range(n)]
@@ -215,7 +258,7 @@ def main(n):
     solution = greedyCircuit(graph, objective=objective)
     print("greedy solution: " + str(solution))
     print("value: " + str(objective(solution)))
-    solution = hillClimb(solution, graph, objective=objective)
+    solution = mltHillClimb(solution, graph)
     print("\nhill climbed solution: " + str(solution))
     print("value: " + str(objective(solution)))
     
