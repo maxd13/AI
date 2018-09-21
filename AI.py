@@ -202,10 +202,41 @@ def swap(circuit, i, j):
 
 fst = lambda pair: pair[0]
 
-def mltResize(graph, solution, size, i, j):
-    """ recalculates the value of the solution with the mlt heuristic after
-        its i vertex has been swapped by its j vertex.
+def tspResize(graph, solution, size, previous, current):
+    """ recalculates the value of the solution with the tsp heuristic, after
+        its i vertex has been swapped by its j vertex, and returns the pair (newWeight, newSolution).
+        The function considers the previous best solution as well as the current one in order to
+        perform the calculation.
     """
+    # figure out what vertices were swapped between the previous and current solutions.
+    i, j = diff(previous, current)
+    n = graph.dimension()
+    preI = graph.edgeWeight(solution[i-1], solution[i]) if i > 0 else 0.0
+    posI = graph.edgeWeight(solution[i], solution[i+1]) if not j == i + 1 else 0.0
+    preJ = graph.edgeWeight(solution[j-1], solution[j]) if not j == i + 1 else 0.0
+    posJ = graph.edgeWeight(solution[j], solution[j+1]) if j < n else 0.0
+    subtract = preI + posI + preJ + posJ
+
+    solution = swap(solution, i, j)
+
+    preI = graph.edgeWeight(solution[i-1], solution[i]) if i > 0 else 0.0
+    posI = graph.edgeWeight(solution[i], solution[i+1]) if not j == i + 1 else 0.0
+    preJ = graph.edgeWeight(solution[j-1], solution[j]) if not j == i + 1 else 0.0
+    posJ = graph.edgeWeight(solution[j], solution[j+1]) if j < n else 0.0
+    add = preI + posI + preJ + posJ
+
+    size += add - subtract
+
+    return (size, solution)
+
+def mltResize(graph, solution, size, previous, current):
+    """ recalculates the value of the solution with the mlt heuristic, after
+        its i vertex has been swapped by its j vertex, and returns the pair (newWeight, newSolution).
+        The function considers the previous best solution as well as the current one in order to
+        perform the calculation.
+    """
+    # figure out what vertices were swapped between the previous and current solutions.
+    i, j = diff(previous, current)
     n = graph.dimension()
     preI = graph.edgeWeight(solution[i-1], solution[i]) if i > 0 else 0.0
     posI = graph.edgeWeight(solution[i], solution[i+1]) if not j == i + 1 else 0.0
@@ -225,47 +256,64 @@ def mltResize(graph, solution, size, i, j):
 
     return (size, solution)
 
-def mltHillClimb(circuit, graph, maximize=False):
+def hillClimb(circuit, graph, constructor=swapSpace, objective=None, resize=tspResize, maximize=False):
     """ Generates a hamiltonian circuit for the mlt problem by best fit Hill Climbing upon
-        a previous solution. This algorithm uses the swap neighbourhood.
-        Originally we made a very generic function that allowed for the 
-        specification of an objective function and neighborhood constructor function. However
-        we decided doing a function for each particular case would allow greater optmization.
-        The maximize flag can still be specified if one wants to find the worst solution.
+        a previous solution. By default it uses the tsp heuristic and seeks to minimize it.
+        By specifying a resize function for the problem, this algorithm is optmized.
     """
-    objective = mlt(graph)
+    #obs: optimizations were not working as intended, so we reverted back to reconstructing the whole space.
+    if objective == None:
+        objective = tsp(graph)
+    space = sorted(((objective(solution), solution) for solution in constructor(circuit)), key=fst, reverse=maximize)
     value = objective(circuit)
-    space = sorted(((objective(solution), solution) for solution in swapSpace(circuit)), key=fst, reverse=maximize)
     result = space[0]
-    keys = diff(circuit, result[1])
     cond = isclose(value, result[0]) or (value > result[0] if maximize else value < result[0])
     while not cond:
+        #space = sorted( (resize(graph, solution, size, circuit, result[1])
+        #for size,solution in space[1::]),
+        #key=fst, reverse=maximize)
         circuit = result[1]
         value = result[0]
-        space = sorted( (mltResize(graph, solution, size, keys[0], keys[1])
-        for size,solution in space[1::]),
-        key=fst, reverse=maximize)
+        space = sorted(((objective(solution), solution) for solution in constructor(circuit)), key=fst, reverse=maximize)
         result = space[0]
-        keys = diff(circuit, result[1])
         cond = isclose(value, result[0]) or (value > result[0] if maximize else value < result[0])
 
     return circuit
 
-def main(n):
-    weights = [[i+j for j in range(n)] for i in range(n)]
+ldr = "LOWER_DIAG_ROW"
+def read(path):
+    lines = open(path, 'r').readlines()
+    dimension = int(lines[3].strip().split()[1])
+    mode = lines[5].strip().split()[1]
+    start = 8 if lines[6].startswith("DISPLAY") else 7
+    space = [line.strip().split() for line in lines[start::]]
+    getWeight = None
+    if mode == ldr:
+        getWeight = lambda i,j: space[max(i, j)][min(i, j) - 1]
+    else:
+        getWeight = lambda i,j: space[min(i, j)][max(i, j) - 1 - i] if not i == j else 0.0
+    weights = [[int(getWeight(i, j)) for j in range(dimension)]for i in range(dimension)]
+    return (dimension, weights)
+
+
+def solve(n, weights, problem="tsp"):
     graph = Graph.complete_graph(n, weights)
-    objective=mlt(graph)
+    objective=tsp(graph) if problem == "tsp" else mlt(graph)
     solution = greedyCircuit(graph, objective=objective)
-    print("greedy solution: " + str(solution))
+    print(problem + " greedy solution: " + str(solution))
     print("value: " + str(objective(solution)))
-    solution = mltHillClimb(solution, graph)
-    print("\nhill climbed solution: " + str(solution))
+    solution = hillClimb(solution, graph, objective=objective)
+    print("\n" + problem + " hill climbed solution: " + str(solution))
     print("value: " + str(objective(solution)))
     
-
+    
+files = ["brazil58.tsp", "dantzig42.tsp", "gr120.tsp", "gr48.tsp", "pa561.tsp"]
 if __name__ == '__main__':
-    main(58)
-
+    for path in files:
+        n, weights = read(path)
+        print("Evalutating file: " + path)
+        solve(n, weights)
+        
 
 
 
