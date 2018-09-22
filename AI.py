@@ -4,6 +4,8 @@ A Python module implementing greedy search
 and Hill Cimbing solutions for the Travelling Salesman
 and Minimum Latency problems. Adapted from:
 https://www.python-course.eu/graphs_python.php
+I barely had enought time to do this.
+Luiz Carlos R Viana
 """
 
 
@@ -261,7 +263,7 @@ def hillClimb(circuit, graph, constructor=swapSpace, objective=None, resize=tspR
         a previous solution. By default it uses the tsp heuristic and seeks to minimize it.
         By specifying a resize function for the problem, this algorithm is optmized.
     """
-    #obs: optimizations were not working as intended, so we reverted back to reconstructing the whole space.
+    #optimizations were not working as intended, so we reverted back to reconstructing the whole space.
     if objective == None:
         objective = tsp(graph)
     space = sorted(((objective(solution), solution) for solution in constructor(circuit)), key=fst, reverse=maximize)
@@ -277,6 +279,7 @@ def hillClimb(circuit, graph, constructor=swapSpace, objective=None, resize=tspR
         space = sorted(((objective(solution), solution) for solution in constructor(circuit)), key=fst, reverse=maximize)
         result = space[0]
         cond = isclose(value, result[0]) or (value > result[0] if maximize else value < result[0])
+        print("ITERATION!!!")
 
     return circuit
 
@@ -285,11 +288,21 @@ def read(path):
     lines = open(path, 'r').readlines()
     dimension = int(lines[3].strip().split()[1])
     mode = lines[5].strip().split()[1]
-    start = 8 if lines[6].startswith("DISPLAY") else 7
-    space = [line.strip().split() for line in lines[start::]]
-    getWeight = None
+    #this is ugly because I dont have time to make it pretty.
+    if lines[6].startswith("DISPLAY"):
+        end = list(lines.index(line) for line in lines[8:] if line.startswith("DISPLAY"))[0]
+        space = [line.strip().split() for line in lines[8:end]]
+    elif lines[6].startswith("NODE") and lines[7].startswith("DISPLAY"):
+        end = list(lines.index(line) for line in lines[9:] if line.startswith("DISPLAY"))[0]
+        space = [line.strip().split() for line in lines[9:end]]
+    else:
+        space = [line.strip().split() for line in lines[7:]]
     if mode == ldr:
-        getWeight = lambda i,j: space[max(i, j)][min(i, j) - 1]
+        #turn matrix into array
+        space = [space[i][j] for i in range(len(space)) for j in range(len(space[i]))]
+        #computes lower diagonal matrix using triangular number sequence.
+        space = [space[int(i*(i-1)/2):int(i*(i+1)/2)] for i in range(1, dimension+1)]
+        getWeight = lambda i,j: space[max(i, j)][min(i, j)]
     else:
         getWeight = lambda i,j: space[min(i, j)][max(i, j) - 1 - i] if not i == j else 0.0
     weights = [[int(getWeight(i, j)) for j in range(dimension)]for i in range(dimension)]
@@ -300,19 +313,21 @@ def solve(n, weights, problem="tsp"):
     graph = Graph.complete_graph(n, weights)
     objective=tsp(graph) if problem == "tsp" else mlt(graph)
     solution = greedyCircuit(graph, objective=objective)
-    print(problem + " greedy solution: " + str(solution))
+    print(problem + " greedy solution: ")
+    print(solution)
     print("value: " + str(objective(solution)))
+    print("\n" + problem + " hill climbed solution: ")
     solution = hillClimb(solution, graph, objective=objective)
-    print("\n" + problem + " hill climbed solution: " + str(solution))
+    print(solution)
     print("value: " + str(objective(solution)))
     
-    
-files = ["brazil58.tsp", "dantzig42.tsp", "gr120.tsp", "gr48.tsp", "pa561.tsp"]
+#unable to process the last file without optimizations
+files = ["brazil58.tsp", "dantzig42.tsp", "gr120.tsp", "gr48.tsp"]#, "pa561.tsp"]
 if __name__ == '__main__':
     for path in files:
         n, weights = read(path)
-        print("Evalutating file: " + path)
-        solve(n, weights)
+        print("\nEvalutating file: " + path)
+        solve(n, weights, "mlt")
         
 
 
