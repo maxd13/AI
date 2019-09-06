@@ -322,7 +322,7 @@ def solve(n, weights, problem="tsp"):
     print("value: " + str(objective(solution)))
     
 #unable to process the last file without optimizations
-files = ["brazil58.tsp", "dantzig42.tsp", "gr120.tsp", "gr48.tsp"]#, "pa561.tsp"]
+files = ["brazil58.tsp", "dantzig42.tsp", "gr120.tsp", "gr48.tsp"]1, #"pa561.tsp"]
 if __name__ == '__main__':
     for path in files:
         n, weights = read(path)
